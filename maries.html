@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Espace des mariés</title>
+<style>
+:root{--bg:#FBFBF8;--ink:#1D2A26;--mute:#66726D;--acc:#2F5D50;--line:#E4E3DC;--panel:#F1F1EB}
+@media (prefers-color-scheme:dark){:root{--bg:#121A17;--ink:#ECEBE4;--mute:#9AA7A1;--acc:#7FB5A3;--line:#2A3631;--panel:#1A2420}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:28px 18px 60px}h1{font-weight:500;font-size:1.6rem}h2{font-weight:500;font-size:1.2rem;margin:30px 0 10px}
+input,select,button{font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+button{cursor:pointer;background:var(--ink);color:var(--bg);border:0;border-radius:999px;width:auto;padding:11px 20px}button.l{background:transparent;color:var(--ink);border:1px solid var(--line);padding:6px 12px;font-size:.85rem}
+.box{border:1px solid var(--line);background:var(--panel);padding:14px;display:grid;gap:8px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:9px 0;color:var(--mute);font-size:.92rem}.row b{display:block;color:var(--ink);font-weight:500}
+.err{color:#B3261E}.tot{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.tot div{border:1px solid var(--line);background:var(--panel);padding:10px}.tot b{display:block;font-size:1.5rem;font-weight:500}
+[hidden]{display:none!important}
+</style></head><body><main>
+<h1>Espace des mariés</h1>
+<div id="login" class="box" hidden>
+ <input id="em" type="email" placeholder="E-mail" autocomplete="username"><input id="pw" type="password" placeholder="Mot de passe" autocomplete="current-password">
+ <button id="go">Se connecter</button><div id="lerr" class="err" role="alert"></div>
+</div>
+<div id="app" hidden>
+ <button class="l" id="out">Se déconnecter</button> <button class="l" id="csv">Exporter la liste (CSV)</button>
+ <h2>Totaux</h2><div class="tot" id="tot"></div>
+ <h2>Ajouter un invité</h2>
+ <div class="box"><input id="gn" placeholder="Nom de l’invité"><select id="gg"></select><button id="add">Ajouter et créer son lien</button><div id="aerr" class="err"></div></div>
+ <h2>Invités et liens personnels</h2><div id="gl"></div>
+ <h2>Réponses reçues</h2><div id="rl"></div>
+ <h2>Tables et tenues</h2><div id="ge"></div><button id="sg">Enregistrer les groupes</button> <span id="gm"></span>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const sb=supabase.createClient("https://bdrcnwxrjuwwefspemnm.supabase.co","sb_publishable_updtYL5csEVjxQwaGTazbw_hI-BEUwO");
+const $=id=>document.getElementById(id);
+const slugify=n=>n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+let G=[],GS=[],RS=[];
+function el(t,txt,cls){const e=document.createElement(t);if(txt!=null)e.textContent=txt;if(cls)e.className=cls;return e}
+async function load(){
+  const [g,gs,rs]=await Promise.all([sb.from("groups").select("*").order("sort"),sb.from("guests").select("*").order("created_at"),sb.from("rsvps").select("*").order("created_at")]);
+  G=g.data||[];GS=gs.data||[];RS=rs.data||[];draw();
+}
+function draw(){
+  const yes=RS.filter(r=>r.attending),no=RS.filter(r=>!r.attending),seen=new Set(RS.map(r=>r.slug));
+  const pend=GS.filter(x=>!seen.has(x.slug)).length,pers=yes.reduce((a,r)=>a+(r.count||0),0);
+  $("tot").innerHTML="";[["Invités",GS.length],["Confirmés",yes.length],["Personnes",pers],["Refus",no.length],["Sans réponse",pend]].forEach(([k,v])=>{const d=el("div",k);d.prepend(el("b",v));$("tot").appendChild(d)});
+  $("gg").innerHTML="";G.forEach(g=>{const o=el("option",g.label);o.value=g.id;$("gg").appendChild(o)});
+  const base=new URL("./",location.href).href;$("gl").innerHTML="";
+  GS.forEach(x=>{const r=el("div",null,"row"),d=el("div");d.appendChild(el("b",x.name));
+    const st=seen.has(x.slug)?(RS.find(r=>r.slug===x.slug).attending?"a confirmé":"a refusé"):"sans réponse";
+    d.appendChild(document.createTextNode(st));const b=el("button","Copier le lien","l");
+    b.onclick=()=>navigator.clipboard.writeText(base+"#"+x.slug).then(()=>b.textContent="Lien copié");r.appendChild(d);r.appendChild(b);$("gl").appendChild(r)});
+  $("rl").innerHTML="";RS.forEach(r=>{const w=el("div",null,"row"),d=el("div");d.appendChild(el("b",r.name));
+    d.appendChild(document.createTextNode(r.attending?(r.group_label+" · "+r.table_name+" · "+r.count+" pers."):"Ne viendra pas"));w.appendChild(d);$("rl").appendChild(w)});
+  $("ge").innerHTML="";G.forEach(g=>{const b=el("div",null,"box");b.appendChild(el("b",g.label));
+    const t=el("input"),d=el("input");t.value=g.table_name;d.value=g.dress;t.dataset.id=d.dataset.id=g.id;t.dataset.k="table_name";d.dataset.k="dress";b.append(t,d);$("ge").appendChild(b)});
+}
+$("add").onclick=async()=>{const n=$("gn").value.trim(),sl=slugify(n);if(!sl){$("aerr").textContent="Nom invalide.";return}
+  const {error}=await sb.from("guests").insert({slug:sl,name:n,group_id:$("gg").value});$("aerr").textContent=error?"Impossible d’ajouter (nom déjà utilisé ?).":"";if(!error){$("gn").value="";load()}};
+$("sg").onclick=async()=>{const by={};document.querySelectorAll("#ge input").forEach(i=>{(by[i.dataset.id]??={})[i.dataset.k]=i.value.trim()});
+  for(const id in by) await sb.from("groups").update(by[id]).eq("id",id);$("gm").textContent="Enregistré.";load()};
+$("csv").onclick=()=>{const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const rows=[["Nom","Groupe","Table","Personnes","Présence"],...RS.map(r=>[r.name,r.group_label,r.table_name,r.count,r.attending?"oui":"non"])];
+  const a=el("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+rows.map(r=>r.map(q).join(";")).join("\n")],{type:"text/csv"}));a.download="invites.csv";a.click()};
+$("go").onclick=async()=>{const {error}=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});
+  $("lerr").textContent=error?"E-mail ou mot de passe incorrect.":"";if(!error)start()};
+$("out").onclick=async()=>{await sb.auth.signOut();start()};
+async function start(){const {data}=await sb.auth.getSession();$("login").hidden=!!data.session;$("app").hidden=!data.session;if(data.session)load()}
+start();
+</script></main></body></html>
